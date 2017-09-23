@@ -2,7 +2,7 @@
 #define FW_VERSION "0.0.4"
 
 #include <RGBConverter.h>
-#include <ArduinoJson.h>
+#include <ArduinoJson.h> // Version 5.10.1 (Homie 1.5 doesn't play well with others)
 
 #include <Homie.h>
 #include <RGBWWLed.h>
@@ -14,18 +14,22 @@
 #define WWPIN 5
 #define CWPIN 2
 
-#define TRANSITION_DEFAULT 1000
+#define TRANSITION_DEFAULT 1000 // Default time in milliseconds for color transitions
 
 // RF Remote
+// If a pulse is between these two values, consider it a Header pulse
 #define MIN_HEADER_LENGTH 4000
 #define MAX_HEADER_LENGTH 8000
-
+ 
+// between these two values, cosider it a 0
 #define MIN_SPACE_LENGTH 150
 #define MAX_SPACE_LENGTH 250
 
+// between these two values, consider it a 1
 #define MIN_MARK_LENGTH 500
 #define MAX_MARK_LENGTH 750
 
+// Command values for each button
 #define BUTTON_POWER_ON     0x01
 #define BUTTON_POWER_OFF    0x02
 #define BUTTON_UP           0x03
@@ -38,11 +42,13 @@
 #define BUTTON_BLUE         0x0B
 #define BUTTON_WHITE        0x09
 
+// ID of the remote to respond to
 #define REMOTE_ID           0x2686
 #define REMOTE_REPEAT_TIME  (100 * 1000) // 100 ms
 
-#define REMOTE_RF_PIN       4
+#define REMOTE_RF_PIN       4 // Input from RF module output
 
+// Contains data about the RF packet
 typedef union RFPacket {
   struct{
     byte command :8;
@@ -51,6 +57,7 @@ typedef union RFPacket {
   unsigned long value;
 } ;
 
+// Used when receiving/building a packet
 volatile struct RemoteCommand
 {
   byte count;
@@ -63,11 +70,11 @@ HomieNode lightNode("light", "color");
 RGBWWLed rgbled;
 RGBConverter colorConverter;
 
-HSVCT colorBlack = HSVCT(0, 0, 0); // Black
-HSVCT colorWhite = HSVCT(0.0f, 0.0f, 100.0f); // White
-HSVCT colorRed = HSVCT(0.0f, 100.0f, 100.0f);  // Red
-HSVCT colorBlue = HSVCT(240.0f, 100.0f, 100.0f); // Blue
-HSVCT colorGreen = HSVCT(120.0f, 100.0f, 100.0f); // Green
+HSVCT colorBlack = HSVCT(0, 0, 0); 
+HSVCT colorWhite = HSVCT(0.0f, 0.0f, 100.0f); 
+HSVCT colorRed = HSVCT(0.0f, 100.0f, 100.0f);  
+HSVCT colorBlue = HSVCT(240.0f, 100.0f, 100.0f); 
+HSVCT colorGreen = HSVCT(120.0f, 100.0f, 100.0f); 
 
 /* Magic sequence for Autodetectable Binary Upload */
 const char *__FLAGGED_FW_NAME = "\xbf\x84\xe4\x13\x54" FW_NAME "\x93\x44\x6b\xa7\x75";
@@ -143,9 +150,82 @@ void ICACHE_RAM_ATTR handleRfInterrupt()
   isHighBitPosition = !isHighBitPosition;
 }
 
-void addToFadeQueue(HSVCT& color, int time)
+bool hassSetHandler(String value)
 {
-  rgbled.fadeHSV(color, time, 0, true);
+  byte rgbw[5] = {0, 0, 0, 0, 0};
+  double hsv[3] = { 0.0, 0.0, 0.0 };
+  HSVCT color;
+  int transition = TRANSITION_DEFAULT;
+  
+  StaticJsonBuffer<350> jsonBuffer;
+  JsonObject& root = jsonBuffer.parseObject(value);
+  
+  if (!root.success()){
+  //  Serial.println("Bad JSON");
+    return false;
+  }
+
+  if (root.containsKey("transition"))
+  {
+    transition = root["transition"];
+  }
+  if (root.containsKey("brightness"))
+  {
+    int brightness = root["brightness"];
+    color = rgbled.getCurrentColor();
+    color.v = map(brightness, 0, 255, 0, RGBWW_CALC_MAXVAL);
+    setColor(color, transition);
+    return true;
+  }
+  if (root.containsKey("state"))
+  {
+    if (root["state"] == "OFF")
+    {
+      setColor(colorBlack, transition);
+      return true;
+    }else if (root["state"] == "ON" && !isLightOn()){
+      setColor(colorWhite, transition);
+      return true;
+    }
+  }
+
+  if (root.containsKey("color"))
+  {
+    JsonObject& oColor = root["color"];
+    rgbw[0] = oColor["r"];
+    rgbw[1] = oColor["g"];
+    rgbw[2] = oColor["b"];
+    colorConverter.rgbToHsv(rgbw[0], rgbw[1], rgbw[2], hsv);
+    color = HSVCT( (float)(hsv[0] * 360.0), (float)(hsv[1] * 100.0), (float)(hsv[2] * 100.0) );
+    setColor(color, transition);
+    return true;
+  }
+  Serial.print("Unknown Command: "); Serial.println(value);
+  return false;
+}
+
+void onColorChanged(RGBWWLed* rgbwwctrl)
+{
+  char buffer[256];
+  StaticJsonBuffer<400> jsonBuffer;
+
+  JsonObject& root = jsonBuffer.createObject();
+  JsonObject& color = jsonBuffer.createObject();
+  
+  HSVCT c = rgbwwctrl->getCurrentColor();
+  root["brightness"] = map(c.v, 0, RGBWW_CALC_MAXVAL, 0, 255);
+  SetAsRadian(c);
+  byte rgb[3];
+  colorConverter.hsvToRgb( c.h / 360.0, c.s / 100.0, c.v / 100.0, rgb);
+
+  color["r"] = rgb[0];
+  color["g"] = rgb[1];
+  color["b"] = rgb[2];
+  root["color"] = color;
+  root["state"] = isLightOn() ? "ON" : "OFF";
+
+  root.printTo(buffer, sizeof(buffer));
+  Homie.setNodeProperty(lightNode, "hass", buffer, false);
 }
 
 void doStartUpColors()
@@ -182,6 +262,18 @@ void adjustHue(int value)
   setColor(currentColor, 0);
 }
 
+bool lightOnHandler(String value) {
+//  Serial.print("value: ");
+//  Serial.println(value);
+  HSVCT color;
+  if (value == "true") {
+    setColor(colorWhite);
+  } else if (value == "false") {
+    setColor(colorBlack);
+  }
+  return true;
+}
+
 void setColor(HSVCT color)
 {
   setColor(color, TRANSITION_DEFAULT);
@@ -200,6 +292,75 @@ bool isSameColor(const HSVCT& color1, const HSVCT& color2)
   else
     return true;
 }
+#ifdef ALLOW_RGB_MQTT
+// {"r": 255, "g": 255, "b":255}
+// {"r": 65535, "g": 65535, "b":65535}
+
+bool rgbSetHandler(String value)
+{
+  int rgbw[5] = {0, 0, 0,0,0};
+  StaticJsonBuffer<200> jsonBuffer;
+  //delay(1); //short break for esp to catch up
+  JsonObject& root = jsonBuffer.parseObject(value);
+  //delay(1); //short break for esp to catch up
+  if (!root.success()){
+    Serial.println("Bad JSON");
+    return false;
+  }
+  rgbw[0] = root["r"];
+  rgbw[1] = root["g"];
+  rgbw[2] = root["b"];
+  rgbw[3] = root["ww"];
+  rgbw[4] = root["cw"];
+  Serial.println("Setting Values from JSON.");
+  rgbled.setOutputRaw( rgbw[0], rgbw[1], rgbw[2], rgbw[3], rgbw[4]);
+  return true;
+}
+#endif
+
+bool isLightOn()
+{
+  HSVCT c = rgbled.getCurrentColor();
+  return ( c.v != 0);
+}
+
+void SetAsRadian(HSVCT& hsvct) {
+    hsvct.h = (float(hsvct.h) / float(RGBWW_CALC_HUEWHEELMAX)) * 360.0;
+    //delay(1); //short break for esp to catch up
+    hsvct.s = (float(hsvct.s) / float(RGBWW_CALC_MAXVAL)) * 100.0;
+    //delay(1); //short break for esp to catch up
+    hsvct.v = (float(hsvct.v) / float(RGBWW_CALC_MAXVAL)) * 100.0;
+    //delay(1); //short break for esp to catch up
+}
+
+#ifdef ALLOW_HSV_MQTT
+bool hsvSetHandler(String value){
+  float hue, sat, val = 0;
+  int fade = 0;
+  HSVCT color;
+  StaticJsonBuffer<200> jsonBuffer;
+  //delay(1); //short break for esp to catch up
+  JsonObject& root = jsonBuffer.parseObject(value);
+  //delay(1); //short break for esp to catch up
+  if (!root.success()){
+    Serial.println("Bad JSON");
+    return false;
+  }
+  hue = root["h"];
+  sat = root["s"];
+  val = root["v"];
+  fade = root["fade"];
+  //delay(1); //short break for esp to catch up
+  color = HSVCT(hue, sat, val);
+  //delay(1); //short break for esp to catch up
+  setColor(color, fade);
+}
+#endif
+
+void addToFadeQueue(HSVCT& color, int time)
+{
+  rgbled.fadeHSV(color, time, 0, true);
+}
 
 void setup() {
 
@@ -209,23 +370,22 @@ void setup() {
   rgbled.colorutils.setHSVmodel(RGBWW_HSVMODEL::RAINBOW);
   
   Homie.setFirmware(FW_NAME, FW_VERSION);
-//  lightNode.subscribe("on", lightOnHandler);
+  lightNode.subscribe("on", lightOnHandler);
 #ifdef ALLOW_RGB_MQTT
   lightNode.subscribe("rgb", rgbSetHandler);
 #endif  
 #ifdef ALLOW_HSV_MQTT
   lightNode.subscribe("hsv", hsvSetHandler);
 #endif
-  //lightNode.subscribe("hass", hassSetHandler);
+  lightNode.subscribe("hass", hassSetHandler);
   
   Homie.registerNode(lightNode);
   Homie.enableLogging(false);
   Homie.setup();
   doStartUpColors();
-  //rgbled.setAnimationCallback(onColorChanged);
+  rgbled.setAnimationCallback(onColorChanged);
   attachInterrupt(REMOTE_RF_PIN, handleRfInterrupt, CHANGE);
 }
-
 
 void loop() {
   Homie.loop();
@@ -276,4 +436,3 @@ void loop() {
   }
   delay(5);//short break for esp to catch up
 }
-

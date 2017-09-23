@@ -1,0 +1,27 @@
+{
+    "configurations": [
+        {
+            "name": "Mac",
+            "includePath": [
+                "/Users/simonbs/Library/Arduino15/packages/esp8266/hardware/esp8266/2.2.0/cores/esp8266",
+                "/Users/simonbs/Documents/Arduino/libraries/RGBConverter-master",
+                "/Users/simonbs/Documents/Arduino/libraries/homie-esp8266-1.5.0/src"
+            ],
+            "browse": {
+                "limitSymbolsToIncludedHeaders": false,
+                "path": [
+                    "/Users/simonbs/Library/Arduino15/packages/esp8266/hardware/esp8266/2.2.0/cores/esp8266",
+                    "${workspaceRoot}",
+                    "/Users/simonbs/Documents/Arduino/libraries/RGBConverter-master",
+                    "/Users/simonbs/Documents/Arduino/libraries/homie-esp8266-1.5.0/src"
+                ]
+            },
+            "intelliSenseMode": "clang-x64",
+            "macFrameworkPath": [
+                "/System/Library/Frameworks",
+                "/Library/Frameworks"
+            ]
+        }
+    ],
+    "version": 3
+}
