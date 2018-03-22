@@ -3,17 +3,27 @@
         {
             "name": "Mac",
             "includePath": [
-                "/Users/simonbs/Library/Arduino15/packages/esp8266/hardware/esp8266/2.2.0/cores/esp8266",
-                "/Users/simonbs/Documents/Arduino/libraries/RGBConverter-master",
-                "/Users/simonbs/Documents/Arduino/libraries/homie-esp8266-1.5.0/src"
+                "/Users/simonbs/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.1/cores/esp8266",
+                "/Users/simonbs/Documents/Arduino/libraries/homie-esp8266/src",
+                "/Users/simonbs/Documents/Arduino/libraries/ArduinoJson/src",
+                "/Users/simonbs/Documents/Arduino/libraries/async-mqtt-client/src",
+                "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncTCP/src",
+                "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncWebServer/src",
+                "/Users/simonbs/Documents/Arduino/libraries/FastLED",
+                "/Users/simonbs/Documents/Arduino/libraries/CmdParser/src"
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": false,
                 "path": [
-                    "/Users/simonbs/Library/Arduino15/packages/esp8266/hardware/esp8266/2.2.0/cores/esp8266",
+                    "/Users/simonbs/Library/Arduino15/packages/esp8266/hardware/esp8266/2.4.1/cores/esp8266",
                     "${workspaceRoot}",
-                    "/Users/simonbs/Documents/Arduino/libraries/RGBConverter-master",
-                    "/Users/simonbs/Documents/Arduino/libraries/homie-esp8266-1.5.0/src"
+                    "/Users/simonbs/Documents/Arduino/libraries/homie-esp8266/src",
+                    "/Users/simonbs/Documents/Arduino/libraries/ArduinoJson/src",
+                    "/Users/simonbs/Documents/Arduino/libraries/async-mqtt-client/src",
+                    "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncTCP/src",
+                    "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncWebServer/src",
+                    "/Users/simonbs/Documents/Arduino/libraries/FastLED",
+                    "/Users/simonbs/Documents/Arduino/libraries/CmdParser/src"
                 ]
             },
             "intelliSenseMode": "clang-x64",
