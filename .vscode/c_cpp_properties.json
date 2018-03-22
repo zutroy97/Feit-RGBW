@@ -10,7 +10,8 @@
                 "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncTCP/src",
                 "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncWebServer/src",
                 "/Users/simonbs/Documents/Arduino/libraries/FastLED",
-                "/Users/simonbs/Documents/Arduino/libraries/CmdParser/src"
+                "/Users/simonbs/Documents/Arduino/libraries/CmdParser/src",
+                "/Users/simonbs/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/cores/arduino"
             ],
             "browse": {
                 "limitSymbolsToIncludedHeaders": false,
@@ -23,7 +24,8 @@
                     "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncTCP/src",
                     "/Users/simonbs/Documents/Arduino/libraries/ESPAsyncWebServer/src",
                     "/Users/simonbs/Documents/Arduino/libraries/FastLED",
-                    "/Users/simonbs/Documents/Arduino/libraries/CmdParser/src"
+                    "/Users/simonbs/Documents/Arduino/libraries/CmdParser/src",
+                    "/Users/simonbs/Library/Arduino15/packages/arduino/hardware/avr/1.6.21/cores/arduino"
                 ]
             },
             "intelliSenseMode": "clang-x64",

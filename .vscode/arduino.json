@@ -1,7 +1,7 @@
 {
-    "board": "esp8266:esp8266:nodemcuv2",
-    "configuration": "CpuFrequency=80,FlashSize=4M3M,LwIPVariant=v2mss536,Debug=Disabled,DebugLevel=None____,FlashErase=none,UploadSpeed=115200",
+    "board": "arduino:avr:pro",
+    "configuration": "cpu=16MHzatmega328",
     "sketch": "Feit-RGBW.ino",
     "output": "../build",
-    "port": "/dev/cu.SLAB_USBtoUART"
+    "port": "/dev/cu.wchusbserial10"
 }

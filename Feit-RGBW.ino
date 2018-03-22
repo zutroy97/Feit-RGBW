@@ -4,10 +4,11 @@
 #define FW_VERSION "0.0.4"
 
 #include <Arduino.h>
-#include <CmdBuffer.hpp>
+/*#include <CmdBuffer.hpp>
 #include <CmdCallback.hpp>
 #include <CmdParser.hpp>
 #define FASTLED_ESP8266_NODEMCU_PIN_ORDER
+*/
 #include <FastLED.h>
 
 #define UPDATES_PER_SECOND 100
@@ -17,19 +18,25 @@ CRGB leds[NUM_LEDS];
 
 byte patternCount = 0;
 
-// LED related
+/*
+// LED  ESP-8266
 #define REDPIN 13
 #define GREENPIN 12
 #define BLUEPIN 14
 #define DATA_PIN 4
-
+*/
+// LED  Nano
+#define REDPIN 9 //13 // D9
+#define GREENPIN 10 //14 // D10 
+#define BLUEPIN 11 //15 // D11
+#define DATA_PIN 4
 CRGBPalette16 currentPalette;
 TBlendType    currentBlending;
 
 extern CRGBPalette16 myRedWhiteBluePalette;
 extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
 
-CmdCallback_P<3> cmdCallback;
+//CmdCallback_P<3> cmdCallback;
 
 void show()
 {
@@ -39,13 +46,13 @@ void show()
   analogWrite(GREENPIN, rgb->g );
   analogWrite(BLUEPIN,  rgb->b );
 }
-
+/*
 void functNext(CmdParser *myParser)
 {
     patternCount++;
     ChangePaletteOnKeypress(patternCount);
 }
-
+*/
 void setup() {
 
   delay(1000);
@@ -59,7 +66,7 @@ void setup() {
   currentPalette = RainbowColors_p;
   currentBlending = LINEARBLEND;
 
-  cmdCallback.addCmd(PSTR("n"), &functNext);
+  //cmdCallback.addCmd(PSTR("n"), &functNext);
   Serial.println("Setup Complete");
 }
 
@@ -68,19 +75,9 @@ void setup() {
 int bytes2Read = 0;
 void loop() {
     static uint8_t startIndex = 0;
-    CmdBuffer<32> myBuffer;
-    CmdParser     myParser;
-    
-    if (Serial.available() > 0){
-        if (myBuffer.readFromSerial(&Serial, 0)) // If a command has been received (with no time out)
-        {
-            Serial.println("Received a line of text");
-            myParser.parseCmd(&myBuffer);
-            cmdCallback.processCmd( &myParser);
-        }
-    }
+
     //cmdCallback.loopCmdProcessing(&myParser, &myBuffer, &Serial);
-    /*
+    
     bytes2Read = Serial.available();
     if (bytes2Read > 0)
     {
@@ -92,20 +89,13 @@ void loop() {
         ChangePaletteOnKeypress(patternCount);
     }
     //ChangePalettePeriodically();
-    */
+    
     EVERY_N_MILLISECONDS(100)
     {
-        startIndex = startIndex + 1; /* motion speed */
-        
-        FillLEDsFromPaletteColors( startIndex);
-        
+        FillLEDsFromPaletteColors(++startIndex); /* motion speed */
         show();
     }
     
-    EVERY_N_SECONDS(1)
-    {
-        Serial.println("Hello from second timer");
-    }
 
     //FastLED.delay(1000 / UPDATES_PER_SECOND);  
 }
