@@ -3,5 +3,5 @@
     "configuration": "cpu=16MHzatmega328",
     "sketch": "Feit-RGBW.ino",
     "output": "../build",
-    "port": "/dev/cu.wchusbserial10"
+    "port": "/dev/cu.wchusbserial310"
 }
