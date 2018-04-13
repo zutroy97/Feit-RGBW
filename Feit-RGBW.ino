@@ -1,4 +1,8 @@
-
+#define DEFAULT_HANGTIME 500
+#define DEFAULT_HANGSTEP 32
+#define DEFAULT_HANGSPEED 25
+#define DEFAULT_PATTERN 4
+#define DEFAULT_BRIGHTNESS 255
 
 #define FW_NAME "RGBWController"
 #define FW_VERSION "0.0.4"
@@ -14,11 +18,6 @@
 #define NUM_LEDS 1
 CRGB leds[NUM_LEDS];
 
-//byte transistionDelay = 10; // MS to wait before setting next gradient
-//uint16_t hangDelay = 0;  // MS to wait at each "hang stop"
-byte hangStepsLimit = 16; // Number of gradients to skip before waiting at next hangTime 
-//char buffer[30];
-
 // Custom Patterns
 extern CRGBPalette16 myRedWhiteBluePalette;
 extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
@@ -26,8 +25,8 @@ extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
 typedef struct
 {
     char name[15];
-    uint8_t  numberOfHolds;
-    uint8_t holds[16];
+    //uint8_t  numberOfHolds;
+    //uint8_t holds[16];
     
 } PatternInfo_t;
 
@@ -37,24 +36,40 @@ typedef struct
 {
     uint8_t currentPattern;
     uint8_t whiteValue;
-    uint16_t hangDelay;
-    uint8_t transistionDelay;
+    uint16_t hangTime;
+    uint8_t hangSpeed;
     bool isRunning;
     uint8_t brightness;
+    uint8_t hangSteps;
 } PatternState_t;
-PatternState_t machineState = {0, INITIAL_WHITE_VALUE, 0, 10, true, 255};
+PatternState_t machineState = {
+    DEFAULT_PATTERN,
+    INITIAL_WHITE_VALUE,
+    DEFAULT_HANGTIME,
+    DEFAULT_HANGSPEED,
+    true,
+    DEFAULT_BRIGHTNESS,
+    DEFAULT_HANGSTEP};
 
 #define NUMBER_PATTERNS 7
 const PatternInfo_t Patterns [NUMBER_PATTERNS] PROGMEM = 
 {
-    {"Rainbow", 0, {0}},
-    {"Rainbow Stripe", 0, {0}},
-    {"Heat", 0, {0}},
-    {"Cloud", 0, {0}},
-    {"Party", 0, {0}},
-    {"Lava", 0, {0}},
-    {"Red White Blue", 0, {0}}
+    {"Rainbow"},
+    {"Rainbow Stripe"},
+    {"Heat"},
+    {"Cloud"},
+    {"Party"},
+    {"Lava"},
+    {"Red White Blue"}
 };
+
+#define NUMBER_COLOR_NAMES 4
+const char colorName_red[] PROGMEM = "red";
+const char colorName_green[] PROGMEM = "green";
+const char colorName_blue[] PROGMEM = "blue";
+const char colorName_white[] PROGMEM = "white";
+const char* const colorNames[NUMBER_COLOR_NAMES] PROGMEM = {colorName_red, colorName_green, colorName_blue, colorName_white};
+
 
 CRGBPalette16 palettes[NUMBER_PATTERNS] = {
     RainbowColors_p, 
@@ -104,10 +119,10 @@ void setup() {
     pinMode(BLUEPIN, OUTPUT); // BLUE
     pinMode(WHITEPIN, OUTPUT); // WHITE
     FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
-    currentPalette = RainbowColors_p;
+    currentPalette = PartyColors_p;
     currentBlending = LINEARBLEND;
 
-    cmdAdd( "speed", cmd_speed);
+    cmdAdd( "speed", cmd_hangSpeed);
     cmdAdd("pattern", cmd_pattern);
     cmdAdd("help", cmd_help);
     cmdAdd("hangtime", cmd_hangTime);
@@ -116,8 +131,63 @@ void setup() {
     cmdAdd("off", cmd_off);
     cmdAdd("on", cmd_on);
     cmdAdd("jump", cmd_jump);
+    cmdAdd("hangstep", cmd_hangstep);
+    cmdAdd("color", cmd_color);
     Serial.println(F("READY:"));
     analogWrite(WHITEPIN, machineState.whiteValue);
+}
+
+void cmd_color(int arg_cnt, char **args)
+{
+    char buffer[6];
+    Stream *s = cmdGetStream();
+    if (arg_cnt == 2)
+    {
+        for (int i=0; i < NUMBER_COLOR_NAMES; i++)
+        {
+            if (isColorName(i, args[1]))
+            {
+                machineState.isRunning = false;
+                leds[0] = CRGB::Black;
+                analogWrite(WHITEPIN, 0);
+                switch(i)
+                {
+                    case 0:
+                        leds[0] = CRGB::Red; break;
+                    case 1:
+                        leds[0] = CRGB::Green; break;
+                    case 2:
+                        leds[0] = CRGB::Blue; break;
+                    case 3:
+                        analogWrite(WHITEPIN, 255);
+                        machineState.whiteValue = 255;
+                        break;
+                }
+                show();
+            }
+        }
+    }
+}
+
+bool isColorName(byte i, const char* testString)
+{
+    char buffer[10];
+    strcpy_P(buffer, (char*) (pgm_read_word(&(colorNames[i]))));
+    return strcmp(testString, buffer) == 0;
+}
+
+void cmd_hangstep(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    switch(arg_cnt)
+    {
+        case 1:
+            s->println(machineState.hangSteps);
+            break;
+        case 2:
+            machineState.hangSteps = constrain( cmdStr2Num(args[1],10), 1, 255);
+            break;
+    }
 }
 
 void cmd_unknown(int arg_cnt, char **args)
@@ -146,8 +216,8 @@ void cmd_jump(int arg_cnt, char **args)
 
 void loop() {
     static uint8_t gradientIndex = 0; // Where in the gradient are we?
-    static uint8_t transistionTimer = machineState.transistionDelay; // Counts # of loops
-    static uint16_t hangTimeTimer = machineState.hangDelay;
+    static uint8_t transistionTimer = machineState.hangSpeed; // Counts # of loops
+    static uint16_t hangTimeTimer = machineState.hangTime;
 
     cmdPoll();
     EVERY_N_MILLISECONDS(1)
@@ -162,11 +232,11 @@ void loop() {
                     //Serial.print("GI:"); Serial.println(gradientIndex);
                     FillLEDsFromPaletteColors(gradientIndex++); 
                     show();
-                    transistionTimer = machineState.transistionDelay;
-                    if (gradientIndex % hangStepsLimit == 0)
+                    transistionTimer = machineState.hangSpeed;
+                    if (gradientIndex % machineState.hangSteps == 0)
                     {
-                        hangTimeTimer = machineState.hangDelay;
-                        transistionTimer = machineState.transistionDelay;
+                        hangTimeTimer = machineState.hangTime;
+                        transistionTimer = machineState.hangSpeed;
                     }
                 }else{
                     transistionTimer--;
@@ -191,6 +261,7 @@ void ChangePalette(char c)
         {
             currentPalette = palettes[i];
             printPatternName(i);
+            machineState.isRunning = true;
             return;
         }
     }
@@ -242,6 +313,7 @@ const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
     CRGB::Black,
     CRGB::Black
 };
+
 void cmd_bright(int arg_cnt, char **args)
 {
     Stream *s = cmdGetStream();
@@ -277,29 +349,38 @@ void cmd_hangTime(int arg_cnt, char **args)
     switch(arg_cnt)
     {
         case 1:
-            s->println(machineState.hangDelay);
+            s->println(machineState.hangTime);
             break;
         case 2:
-            machineState.hangDelay = cmdStr2Num(args[1], 10);
+            machineState.hangTime = constrain( cmdStr2Num(args[1], 10), 1, 65535);
             break;
     }
 }
 void cmd_help(int arg_cnt, char **args)
 {
+    Stream *s = cmdGetStream();
+    s->println(F("speed-MS between next gradient value 1-255"));
+    s->println(F("pattern-Which pattern letter to run"));
+    s->println(F("hangtime-MS to wait between hangsteps 1-65535"));
+    s->println(F("white-Brightness of the white light 0-100"));
+    s->println(F("bright-overall brightness of the color LEDs (0-100)"));
+    s->println(F("off/on-Change color lights state."));
+    s->println(F("hangstep-Number of steps between hangtime"));
+    s->println(F("Patterns:"));
     for (byte i = 0; i< NUMBER_PATTERNS; i++)
     {
-        //memcpy_P (&tempPatternInfo, &Patterns[i], sizeof tempPatternInfo);
-        Serial.print(i);Serial.print(F(" - "));
-        Serial.print( (char)('a' + i));Serial.print(F(" "));
+        s->print(i);s->print(F(" - "));
+        s->print( (char)('a' + i));s->print(F(" "));
         printPatternName(i);
-        Serial.println();
+        s->println();
     }
 }
 
 void printPatternName(int patternNumber)
 {
+    Stream *s = cmdGetStream();
     memcpy_P (&tempPatternInfo, &Patterns[patternNumber], sizeof tempPatternInfo);
-    Serial.print(tempPatternInfo.name);
+    s->print(tempPatternInfo.name);
 }
 void cmd_pattern(int arg_cnt, char **args)
 {
@@ -314,16 +395,16 @@ void cmd_pattern(int arg_cnt, char **args)
     }
 }
 
-void cmd_speed(int arg_cnt, char **args)
+void cmd_hangSpeed(int arg_cnt, char **args)
 {
     Stream *s = cmdGetStream();
     switch(arg_cnt)
     {
         case 1:
-            s->println(machineState.transistionDelay);
+            s->println(machineState.hangSpeed);
             break;
         case 2:
-            machineState.transistionDelay = cmdStr2Num(args[1], 10);
+            machineState.hangSpeed = constrain( cmdStr2Num(args[1], 10), 1, 255);
             break;
     }
 }
