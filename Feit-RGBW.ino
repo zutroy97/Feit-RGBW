@@ -9,6 +9,10 @@
 
 #include <Arduino.h>
 #include <Cmd.h>
+#include <FIET72031.h>
+#define REMOTE_RF_PIN       3 // Input from RF module output
+extern volatile struct RFBuilder_t rfBuilder;
+extern volatile RemoteCommand_t receivedCommand;
 
 /*
 #define FASTLED_ESP8266_NODEMCU_PIN_ORDER
@@ -21,6 +25,9 @@ CRGB leds[NUM_LEDS];
 // Custom Patterns
 extern CRGBPalette16 myRedWhiteBluePalette;
 extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
+
+extern CRGBPalette16 myFlashPrimaryColorPalette;
+extern const TProgmemHSVPalette16 myFlashPrimaryColorPalette_p PROGMEM;
 
 typedef struct
 {
@@ -51,7 +58,7 @@ PatternState_t machineState = {
     DEFAULT_BRIGHTNESS,
     DEFAULT_HANGSTEP};
 
-#define NUMBER_PATTERNS 7
+#define NUMBER_PATTERNS 9
 const PatternInfo_t Patterns [NUMBER_PATTERNS] PROGMEM = 
 {
     {"Rainbow"},
@@ -60,7 +67,9 @@ const PatternInfo_t Patterns [NUMBER_PATTERNS] PROGMEM =
     {"Cloud"},
     {"Party"},
     {"Lava"},
-    {"Red White Blue"}
+    {"Red White Blue"},
+    {"Primary Color"},
+    {"Ocean"}
 };
 
 #define NUMBER_COLOR_NAMES 4
@@ -78,7 +87,9 @@ CRGBPalette16 palettes[NUMBER_PATTERNS] = {
     CloudColors_p,
     PartyColors_p,
     LavaColors_p,
-    myRedWhiteBluePalette_p
+    myRedWhiteBluePalette_p,
+    myFlashPrimaryColorPalette_p,
+    OceanColors_p
 };
 
 
@@ -101,7 +112,6 @@ TBlendType    currentBlending;
 
 void show()
 {
-  //FastLED.show();
   CRGB* rgb = FastLED.leds();
   analogWrite(REDPIN,   rgb->r );
   analogWrite(GREENPIN, rgb->g );
@@ -133,8 +143,10 @@ void setup() {
     cmdAdd("jump", cmd_jump);
     cmdAdd("hangstep", cmd_hangstep);
     cmdAdd("color", cmd_color);
-    Serial.println(F("READY:"));
+    attachInterrupt(digitalPinToInterrupt(REMOTE_RF_PIN), handleRfInterrupt, CHANGE);
     analogWrite(WHITEPIN, machineState.whiteValue);
+    Serial.println(F("READY:"));
+
 }
 
 void cmd_color(int arg_cnt, char **args)
@@ -147,21 +159,16 @@ void cmd_color(int arg_cnt, char **args)
         {
             if (isColorName(i, args[1]))
             {
-                machineState.isRunning = false;
-                leds[0] = CRGB::Black;
-                analogWrite(WHITEPIN, 0);
                 switch(i)
                 {
                     case 0:
-                        leds[0] = CRGB::Red; break;
+                        setSolidColor(CRGB::Red); break;
                     case 1:
-                        leds[0] = CRGB::Green; break;
+                        setSolidColor(CRGB::Green); break;
                     case 2:
-                        leds[0] = CRGB::Blue; break;
+                        setSolidColor(CRGB::Blue); break;
                     case 3:
-                        analogWrite(WHITEPIN, 255);
-                        machineState.whiteValue = 255;
-                        break;
+                        setSolidColor(CRGB::White); break;
                 }
                 show();
             }
@@ -169,6 +176,20 @@ void cmd_color(int arg_cnt, char **args)
     }
 }
 
+void setSolidColor(struct CRGB color)
+{
+    machineState.isRunning = false;
+    leds[0] = CRGB::Black;
+    analogWrite(WHITEPIN, 0);
+    if (color == CRGB(CRGB::White))
+    {
+        analogWrite(WHITEPIN, 255);
+        machineState.whiteValue = 255;
+    }else{
+        leds[0] = color;
+    }
+    show();
+}
 bool isColorName(byte i, const char* testString)
 {
     char buffer[10];
@@ -197,15 +218,23 @@ void cmd_unknown(int arg_cnt, char **args)
 }
 void cmd_on(int arg_cnt, char **args)
 {
-    machineState.isRunning = true;
+    setIsRunning(true);
 }
 void cmd_off(int arg_cnt, char **args)
 {
-    machineState.isRunning = false;
-    leds[0] = CRGB::Black;
-    show();
+    setIsRunning(false);
 }
 
+void setIsRunning(bool value)
+{
+    if (value)
+    {
+        machineState.isRunning = true;
+        return;
+    }else{
+        setSolidColor(CRGB::Black);
+    }
+}
 void cmd_jump(int arg_cnt, char **args)
 {
     if (arg_cnt == 2){
@@ -213,12 +242,34 @@ void cmd_jump(int arg_cnt, char **args)
         show();
     }
 }
+void doRemoteCommand(){
+    if (receivedCommand.isReady == 1)
+    {
+        //Serial.print("REMOTE ID 0x"); Serial.println(receivedCommand.packet.id.remote, HEX);
+        //Serial.print(" Count: "); Serial.println(receivedCommand.count);        
+        receivedCommand.isReady = 0;
+        if (receivedCommand.packet.id.remote != 0x2686) return;
+        switch(receivedCommand.packet.id.command)
+        {
+            case BUTTON_POWER_ON:
+                setIsRunning(true); break;
+            case BUTTON_POWER_OFF:
+                setIsRunning(false); break;
+            case BUTTON_WHITE:
+                setSolidColor(CRGB::White); break;
+            default:
+                Serial.print("RECEIVED COMMAND: 0x"); Serial.println(receivedCommand.packet.id.command, HEX);
+                break;
+        }
 
+    }
+}
 void loop() {
     static uint8_t gradientIndex = 0; // Where in the gradient are we?
     static uint8_t transistionTimer = machineState.hangSpeed; // Counts # of loops
     static uint16_t hangTimeTimer = machineState.hangTime;
-
+    RfLoop();
+    doRemoteCommand();
     cmdPoll();
     EVERY_N_MILLISECONDS(1)
     {
@@ -314,6 +365,28 @@ const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
     CRGB::Black
 };
 
+const TProgmemPalette16 myFlashPrimaryColorPalette_p PROGMEM =
+{
+    CRGB::Red,
+    CRGB::Red, // 'white' is too bright compared to red and blue
+    CRGB::Red,
+    CRGB::Black,
+    
+    CRGB::Blue,
+    CRGB::Blue,
+    CRGB::Blue,
+    CRGB::Black,
+    
+    CRGB::Green,
+    CRGB::Green,
+    CRGB::Green,
+    CRGB::Black,
+
+    CRGB::Purple,
+    CRGB::Purple,
+    CRGB::Purple,
+    CRGB::Black
+};
 void cmd_bright(int arg_cnt, char **args)
 {
     Stream *s = cmdGetStream();
@@ -369,7 +442,7 @@ void cmd_help(int arg_cnt, char **args)
     s->println(F("Patterns:"));
     for (byte i = 0; i< NUMBER_PATTERNS; i++)
     {
-        s->print(i);s->print(F(" - "));
+        //s->print(i);s->print(F(" - "));
         s->print( (char)('a' + i));s->print(F(" "));
         printPatternName(i);
         s->println();
