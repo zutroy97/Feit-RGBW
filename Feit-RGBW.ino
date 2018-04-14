@@ -119,8 +119,6 @@ void show()
 }
 
 void setup() {
-
-    delay(100);
     Serial.begin(115200);
     cmdInit(&Serial);
     
@@ -143,6 +141,7 @@ void setup() {
     cmdAdd("jump", cmd_jump);
     cmdAdd("hangstep", cmd_hangstep);
     cmdAdd("color", cmd_color);
+    delay(1000);
     attachInterrupt(digitalPinToInterrupt(REMOTE_RF_PIN), handleRfInterrupt, CHANGE);
     analogWrite(WHITEPIN, machineState.whiteValue);
     Serial.println(F("READY:"));
@@ -243,26 +242,65 @@ void cmd_jump(int arg_cnt, char **args)
     }
 }
 void doRemoteCommand(){
+    Stream *s = cmdGetStream();
     if (receivedCommand.isReady == 1)
     {
         //Serial.print("REMOTE ID 0x"); Serial.println(receivedCommand.packet.id.remote, HEX);
-        //Serial.print(" Count: "); Serial.println(receivedCommand.count);        
-        receivedCommand.isReady = 0;
-        if (receivedCommand.packet.id.remote != 0x2686) return;
-        switch(receivedCommand.packet.id.command)
+        //s->print(" Count: "); s->println(receivedCommand.count);        
+        //if (receivedCommand.packet.id.remote != 0x2686) return;
+        //if (receivedCommand.count != 0) return;
+        if (receivedCommand.count == 0)
         {
-            case BUTTON_POWER_ON:
-                setIsRunning(true); break;
-            case BUTTON_POWER_OFF:
-                setIsRunning(false); break;
-            case BUTTON_WHITE:
-                setSolidColor(CRGB::White); break;
-            default:
-                Serial.print("RECEIVED COMMAND: 0x"); Serial.println(receivedCommand.packet.id.command, HEX);
-                break;
+            // These commands only when count = 0...no holding down the button.
+            switch(receivedCommand.packet.id.command)
+            {
+                case BUTTON_POWER_ON:
+                    setIsRunning(true); break;
+                case BUTTON_POWER_OFF:
+                    setIsRunning(false); break;
+                case BUTTON_WHITE:
+                    setSolidColor(CRGB::White); break;
+                case BUTTON_DOUBLE_ARROW:
+                    goToNextPattern(); break;
+            }
         }
-
+        else if ((receivedCommand.count % 5) == 0)
+        {
+            // These command every 5th count
+            switch(receivedCommand.packet.id.command)
+            {
+                case BUTTON_PLUS:
+                    //increaseHangTime();
+                    break;
+                case BUTTON_MINUS:
+                    //decreaseHangTime();
+                    break;
+                default:
+                    Serial.print("RECEIVED COMMAND: 0x"); Serial.println(receivedCommand.packet.id.command, HEX);
+                    Serial.print(" Count: "); Serial.println(receivedCommand.count);   
+                    break;
+            }
+        }
+        receivedCommand.isReady = 0;
     }
+}
+
+void goToNextPattern()
+{
+    Stream *s = cmdGetStream();
+    machineState.currentPattern++;
+    if (machineState.currentPattern >= NUMBER_PATTERNS)
+        machineState.currentPattern = 0;
+    changePattern(machineState.currentPattern);
+    printPatternName(machineState.currentPattern);
+    s->println();
+}
+
+void changePattern(byte patternIndex)
+{
+    if (patternIndex >= NUMBER_PATTERNS) return;
+    machineState.currentPattern = patternIndex;
+    currentPalette = palettes[machineState.currentPattern];
 }
 void loop() {
     static uint8_t gradientIndex = 0; // Where in the gradient are we?
@@ -303,14 +341,27 @@ void FillLEDsFromPaletteColors( uint8_t colorIndex)
 {
     leds[0] = ColorFromPalette(currentPalette, colorIndex, machineState.brightness, currentBlending);
 }
-
+void cmd_pattern(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    switch(arg_cnt)
+    {
+        case 1:
+            printPatternName(machineState.currentPattern);
+            s->println();
+            break;
+        case 2:
+            ChangePalette(args[1][0]);
+            break;
+    }
+}
 void ChangePalette(char c)
 {
     for (byte i = 0; i< NUMBER_PATTERNS; i++)
     {
         if (c == ('a' + i))
         {
-            currentPalette = palettes[i];
+            changePattern(i);
             printPatternName(i);
             machineState.isRunning = true;
             return;
@@ -337,6 +388,93 @@ void ChangePalette(char c)
     }
 }
 
+void cmd_bright(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    switch(arg_cnt)
+    {
+        case 1:
+            s->println(machineState.brightness);
+            break;
+        case 2:
+            machineState.brightness = constrain(cmdStr2Num(args[1], 10), 0, 100);
+            machineState.brightness = map(machineState.brightness, 0, 100, 0, 255);
+            break;
+    }
+}
+void cmd_white(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    switch(arg_cnt)
+    {
+        case 1:
+            s->println(map(machineState.whiteValue, 0, 255, 0, 100));
+            break;
+        case 2:
+            machineState.whiteValue = constrain(cmdStr2Num(args[1], 10), 0, 100);
+            setWhiteValue(map(machineState.whiteValue, 0, 100, 0, 255));
+            break;
+    }
+}
+
+void setWhiteValue(uint8_t rawValue)
+{
+    machineState.whiteValue = rawValue;
+    analogWrite(WHITEPIN, machineState.whiteValue);
+}
+void cmd_hangTime(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    switch(arg_cnt)
+    {
+        case 1:
+            s->println(machineState.hangTime);
+            break;
+        case 2:
+            machineState.hangTime = constrain( cmdStr2Num(args[1], 10), 1, 65535);
+            break;
+    }
+}
+void cmd_help(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    s->println(F("speed-MS between next gradient value 1-255"));
+    s->println(F("pattern-Which pattern letter to run"));
+    s->println(F("hangtime-MS to wait between hangsteps 1-65535"));
+    s->println(F("white-Brightness of the white light 0-100"));
+    s->println(F("bright-overall brightness of the color LEDs (0-100)"));
+    s->println(F("off/on-Change color lights state."));
+    s->println(F("hangstep-Number of steps between hangtime"));
+    s->println(F("Patterns:"));
+    for (byte i = 0; i< NUMBER_PATTERNS; i++)
+    {
+        //s->print(i);s->print(F(" - "));
+        s->print( (char)('a' + i));s->print(F(" "));
+        printPatternName(i);
+        s->println();
+    }
+}
+
+void printPatternName(int patternNumber)
+{
+    Stream *s = cmdGetStream();
+    memcpy_P (&tempPatternInfo, &Patterns[patternNumber], sizeof tempPatternInfo);
+    s->print(tempPatternInfo.name);
+}
+
+void cmd_hangSpeed(int arg_cnt, char **args)
+{
+    Stream *s = cmdGetStream();
+    switch(arg_cnt)
+    {
+        case 1:
+            s->println(machineState.hangSpeed);
+            break;
+        case 2:
+            machineState.hangSpeed = constrain( cmdStr2Num(args[1], 10), 1, 255);
+            break;
+    }
+}
 
 // This example shows how to set up a static color palette
 // which is stored in PROGMEM (flash), which is almost always more
@@ -387,97 +525,3 @@ const TProgmemPalette16 myFlashPrimaryColorPalette_p PROGMEM =
     CRGB::Purple,
     CRGB::Black
 };
-void cmd_bright(int arg_cnt, char **args)
-{
-    Stream *s = cmdGetStream();
-    switch(arg_cnt)
-    {
-        case 1:
-            s->println(machineState.brightness);
-            break;
-        case 2:
-            machineState.brightness = constrain(cmdStr2Num(args[1], 10), 0, 100);
-            machineState.brightness = map(machineState.brightness, 0, 100, 0, 255);
-            break;
-    }
-}
-void cmd_white(int arg_cnt, char **args)
-{
-    Stream *s = cmdGetStream();
-    switch(arg_cnt)
-    {
-        case 1:
-            s->println(machineState.whiteValue);
-            break;
-        case 2:
-            machineState.whiteValue = constrain(cmdStr2Num(args[1], 10), 0, 100);
-            machineState.whiteValue = map(machineState.whiteValue, 0, 100, 0, 255);
-            analogWrite(WHITEPIN, machineState.whiteValue);
-            break;
-    }
-}
-void cmd_hangTime(int arg_cnt, char **args)
-{
-    Stream *s = cmdGetStream();
-    switch(arg_cnt)
-    {
-        case 1:
-            s->println(machineState.hangTime);
-            break;
-        case 2:
-            machineState.hangTime = constrain( cmdStr2Num(args[1], 10), 1, 65535);
-            break;
-    }
-}
-void cmd_help(int arg_cnt, char **args)
-{
-    Stream *s = cmdGetStream();
-    s->println(F("speed-MS between next gradient value 1-255"));
-    s->println(F("pattern-Which pattern letter to run"));
-    s->println(F("hangtime-MS to wait between hangsteps 1-65535"));
-    s->println(F("white-Brightness of the white light 0-100"));
-    s->println(F("bright-overall brightness of the color LEDs (0-100)"));
-    s->println(F("off/on-Change color lights state."));
-    s->println(F("hangstep-Number of steps between hangtime"));
-    s->println(F("Patterns:"));
-    for (byte i = 0; i< NUMBER_PATTERNS; i++)
-    {
-        //s->print(i);s->print(F(" - "));
-        s->print( (char)('a' + i));s->print(F(" "));
-        printPatternName(i);
-        s->println();
-    }
-}
-
-void printPatternName(int patternNumber)
-{
-    Stream *s = cmdGetStream();
-    memcpy_P (&tempPatternInfo, &Patterns[patternNumber], sizeof tempPatternInfo);
-    s->print(tempPatternInfo.name);
-}
-void cmd_pattern(int arg_cnt, char **args)
-{
-    Stream *s = cmdGetStream();
-    switch(arg_cnt)
-    {
-        //case 1:
-        //s->println(patterns)
-        case 2:
-            ChangePalette(args[1][0]);
-            break;
-    }
-}
-
-void cmd_hangSpeed(int arg_cnt, char **args)
-{
-    Stream *s = cmdGetStream();
-    switch(arg_cnt)
-    {
-        case 1:
-            s->println(machineState.hangSpeed);
-            break;
-        case 2:
-            machineState.hangSpeed = constrain( cmdStr2Num(args[1], 10), 1, 255);
-            break;
-    }
-}
