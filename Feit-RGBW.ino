@@ -9,7 +9,7 @@
 
 #include <Arduino.h>
 #include <Cmd.h>
-#include <FIET72031.h>
+#include "FIET72031.h"
 #define REMOTE_RF_PIN       3 // Input from RF module output
 extern volatile struct RFBuilder_t rfBuilder;
 extern volatile RemoteCommand_t receivedCommand;
@@ -274,6 +274,12 @@ void doRemoteCommand(){
                     break;
                 case BUTTON_MINUS:
                     //decreaseHangTime();
+                    break;
+                case BUTTON_UP:
+                    //decrease hangSpeed
+                    break;
+                case BUTTON_DOWN:
+                    // increase hangSpeed
                     break;
                 default:
                     Serial.print("RECEIVED COMMAND: 0x"); Serial.println(receivedCommand.packet.id.command, HEX);
