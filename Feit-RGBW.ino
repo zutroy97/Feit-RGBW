@@ -61,35 +61,36 @@ PatternState_t machineState = {
 #define NUMBER_PATTERNS 9
 const PatternInfo_t Patterns [NUMBER_PATTERNS] PROGMEM = 
 {
-    {"Rainbow"},
-    {"Rainbow Stripe"},
-    {"Heat"},
-    {"Cloud"},
-    {"Party"},
-    {"Lava"},
-    {"Red White Blue"},
-    {"Primary Color"},
-    {"Ocean"}
+    {"Rainbow"}, //0
+    {"Rainbow Stripe"}, //1
+    {"Heat"},   // 2
+    {"Cloud"},  // 3
+    {"Party"},  // 4
+    {"Lava"},   // 5
+    {"Red White Blue"}, // 6
+    {"Primary Color"}, // 7
+    {"Ocean"}   //8
 };
 
-#define NUMBER_COLOR_NAMES 4
+#define NUMBER_COLOR_NAMES 5
 const char colorName_red[] PROGMEM = "red";
 const char colorName_green[] PROGMEM = "green";
 const char colorName_blue[] PROGMEM = "blue";
 const char colorName_white[] PROGMEM = "white";
-const char* const colorNames[NUMBER_COLOR_NAMES] PROGMEM = {colorName_red, colorName_green, colorName_blue, colorName_white};
+const char colorName_black[] PROGMEM = "black";
+const char* const colorNames[NUMBER_COLOR_NAMES] PROGMEM = {colorName_red, colorName_green, colorName_blue, colorName_white, colorName_black};
 
 
 CRGBPalette16 palettes[NUMBER_PATTERNS] = {
-    RainbowColors_p, 
-    RainbowStripesColors_p,
-    HeatColors_p,
-    CloudColors_p,
-    PartyColors_p,
-    LavaColors_p,
-    myRedWhiteBluePalette_p,
-    myFlashPrimaryColorPalette_p,
-    OceanColors_p
+    RainbowColors_p,  //0
+    RainbowStripesColors_p, // 1
+    HeatColors_p,   // 2
+    CloudColors_p,  // 3
+    PartyColors_p,  // 4
+    LavaColors_p,   // 5
+    myRedWhiteBluePalette_p, // 6
+    myFlashPrimaryColorPalette_p,   // 7
+    OceanColors_p // 8
 };
 
 
@@ -119,13 +120,19 @@ void show()
 }
 
 void setup() {
-    Serial.begin(115200);
-    cmdInit(&Serial);
+
     
     pinMode(REDPIN, OUTPUT); // RED
     pinMode(GREENPIN, OUTPUT); // GREEN
     pinMode(BLUEPIN, OUTPUT); // BLUE
     pinMode(WHITEPIN, OUTPUT); // WHITE
+    digitalWrite(REDPIN, LOW);
+    digitalWrite(GREENPIN, LOW);
+    digitalWrite(BLUEPIN, LOW);
+    digitalWrite(WHITEPIN, LOW);
+    delay(1000);
+    Serial.begin(115200);
+    cmdInit(&Serial);
     FastLED.addLeds<NEOPIXEL, DATA_PIN>(leds, NUM_LEDS);
     currentPalette = PartyColors_p;
     currentBlending = LINEARBLEND;
@@ -141,7 +148,7 @@ void setup() {
     cmdAdd("jump", cmd_jump);
     cmdAdd("hangstep", cmd_hangstep);
     cmdAdd("color", cmd_color);
-    delay(1000);
+
     attachInterrupt(digitalPinToInterrupt(REMOTE_RF_PIN), handleRfInterrupt, CHANGE);
     analogWrite(WHITEPIN, machineState.whiteValue);
     Serial.println(F("READY:"));
@@ -168,6 +175,8 @@ void cmd_color(int arg_cnt, char **args)
                         setSolidColor(CRGB::Blue); break;
                     case 3:
                         setSolidColor(CRGB::White); break;
+                    case 4:
+                        setSolidColor(CRGB::Black); break;
                 }
                 show();
             }
@@ -175,6 +184,29 @@ void cmd_color(int arg_cnt, char **args)
     }
 }
 
+void cycleSolidColors()
+{
+    static byte colorIndex = 0;
+    switch(colorIndex)
+    {
+        case 0:
+            setSolidColor(CRGB::Red); break;
+        case 1:
+            setSolidColor(CRGB::Green); break;
+        case 2:
+            setSolidColor(CRGB::Blue); break;     
+        case 3:
+            setSolidColor(CRGB::White); break;   
+        case 4:
+            setSolidColor(CRGB::Purple); break;
+        case 5:
+            setSolidColor(CRGB::GhostWhite);break;
+        case 6:
+            setSolidColor(CRGB::Honeydew); break;
+    }
+    colorIndex++;
+    if (colorIndex > 6) colorIndex = 0;
+}
 void setSolidColor(struct CRGB color)
 {
     machineState.isRunning = false;
@@ -259,9 +291,27 @@ void doRemoteCommand(){
                 case BUTTON_POWER_OFF:
                     setIsRunning(false); break;
                 case BUTTON_WHITE:
-                    setSolidColor(CRGB::White); break;
+                    if (machineState.isRunning)
+                    {
+                        machineState.isRunning = false;
+                        setSolidColor(CRGB::White);
+                    }else{
+                        setWhiteValue(0);
+                        machineState.isRunning = true;
+                    }
+                    break;
                 case BUTTON_DOUBLE_ARROW:
-                    goToNextPattern(); break;
+                    setWhiteValue(0);goToNextPattern(); break;
+                case BUTTON_RED:
+                    //changePattern(4);   // Goto Party Pattern
+                    //machineState.isRunning = true;
+                    //break;
+                    cycleSolidColors();
+                    break;
+                case BUTTON_GREEN:
+                    changePattern(4);   // Instant Party pinMode
+                    machineState.isRunning = true;
+                    break;
             }
         }
         else if ((receivedCommand.count % 5) == 0)
@@ -290,23 +340,28 @@ void doRemoteCommand(){
         receivedCommand.isReady = 0;
     }
 }
-
+// If not running, resume current pattern. Otherwise switch to next pattern.
 void goToNextPattern()
 {
-    Stream *s = cmdGetStream();
+    if (!machineState.isRunning)
+    {
+        machineState.isRunning = true;
+        return;
+    }
     machineState.currentPattern++;
     if (machineState.currentPattern >= NUMBER_PATTERNS)
         machineState.currentPattern = 0;
     changePattern(machineState.currentPattern);
-    printPatternName(machineState.currentPattern);
-    s->println();
 }
 
 void changePattern(byte patternIndex)
 {
+    Stream *s = cmdGetStream();
     if (patternIndex >= NUMBER_PATTERNS) return;
     machineState.currentPattern = patternIndex;
     currentPalette = palettes[machineState.currentPattern];
+    printPatternName(machineState.currentPattern);
+    s->println();
 }
 void loop() {
     static uint8_t gradientIndex = 0; // Where in the gradient are we?
@@ -368,7 +423,7 @@ void ChangePalette(char c)
         if (c == ('a' + i))
         {
             changePattern(i);
-            printPatternName(i);
+            //printPatternName(i);
             machineState.isRunning = true;
             return;
         }
@@ -423,6 +478,13 @@ void cmd_white(int arg_cnt, char **args)
     }
 }
 
+// void toggle_white()
+// {
+//     if (machineState.whiteValue != 0){
+//         setWhiteValue(0);return;
+//     }
+//     setWhiteValue(255);
+// }
 void setWhiteValue(uint8_t rawValue)
 {
     machineState.whiteValue = rawValue;
