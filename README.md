@@ -6,5 +6,5 @@ This project attempts to add the items above, MQTT support, while allowing the c
 
 When using rtl_433 to decode this signal, the following command describes the signal:
 ```bash
-rtl_433 -R 0 -X "n=feit,s=150,l=500,m=OOK_PPM,g=5000,r=5000,bits=24"
+rtl_433 -R 0 -X "n=feit,s=150,l=500,m=OOK_PPM,g=5000,r=5000,bits=24,repeats>=3,unique"
 ```
